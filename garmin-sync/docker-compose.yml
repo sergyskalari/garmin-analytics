@@ -1,0 +1,65 @@
+version: '3.8'
+
+# Stack "garmin-analytics": Garmin extractor + Grafana.
+# Required variables (see .env.example at the repo root):
+#   DATA_ROOT, GRAFANA_PASSWORD
+#   SYNC_WEBHOOK_TOKEN  (only if you deploy the optional garmin-sync-webhook service)
+
+services:
+  garmin-sync:
+    image: python:3.12-slim
+    container_name: garmin-sync
+    restart: unless-stopped
+    environment:
+      # Adjust both the timezone and the hour in the "date -d 'today HH:MM'"
+      # below to your own timezone and to when you want it to sync
+      # (after your usual workout, leaving Garmin enough margin to have
+      # finished processing the previous night's sleep).
+      - TZ=Europe/Madrid
+    volumes:
+      - ${DATA_ROOT}/garmin-app/garmin_db:/app/data
+    command: >
+      bash -c "
+      apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata &&
+      pip install --quiet garminconnect==0.3.16 tzdata &&
+      while true; do
+      python /app/data/sync.py;
+      AHORA=$(date +%s);
+      OBJETIVO=$(date -d 'today 13:00' +%s);
+      if [ $$AHORA -ge $$OBJETIVO ]; then OBJETIVO=$(date -d 'tomorrow 13:00' +%s); fi;
+      ESPERA=$((OBJETIVO - AHORA));
+      echo \"Esperando hasta las 13:00 ($$ESPERA segundos)...\";
+      sleep $$ESPERA;
+      done"
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: garmin-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ${DATA_ROOT}/garmin-app/grafana_data:/var/lib/grafana
+      - ${DATA_ROOT}/garmin-app/garmin_db:/app/data:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_INSTALL_PLUGINS=frser-sqlite-datasource
+
+  # OPTIONAL: on-demand sync (see README, section 1.5).
+  # You can delete this whole service if you do not need it.
+  # The port is published ONLY on the host's 127.0.0.1, never on the local network.
+  garmin-sync-webhook:
+    image: python:3.12-slim
+    container_name: garmin-sync-webhook
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8099:8099"
+    volumes:
+      - ${DATA_ROOT}/garmin-app/garmin_db:/app/data
+    environment:
+      - WEBHOOK_TOKEN=${SYNC_WEBHOOK_TOKEN}
+      - PYTHONUNBUFFERED=1
+    command: >
+      bash -c "pip install --quiet garminconnect==0.3.16 tzdata &&
+      python3 /app/data/webhook.py"

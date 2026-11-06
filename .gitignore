@@ -1,0 +1,35 @@
+# --- Secrets and local configuration: NEVER commit ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+webhook_token*.txt
+
+# --- Personal data and runtime state (live on the host, not in the repo) ---
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+garmin_db/
+garmin-app/
+tokens/
+imports/
+backups/
+hermes/data/
+grafana_data/
+export.xml
+exports.xml
+apple_health_export/
+
+# --- Python / OS / editor noise ---
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
